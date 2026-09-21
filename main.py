@@ -3,6 +3,7 @@ import random
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, status
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
@@ -549,3 +550,5 @@ async def intercambiar_clustermones(
 @app.get("/app")
 async def servir_frontend():
     return FileResponse("static/index.html")
+
+app.mount("/static", StaticFiles(directory="static"), name="static")
