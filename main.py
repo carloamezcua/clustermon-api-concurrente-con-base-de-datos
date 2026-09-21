@@ -218,19 +218,8 @@ async def listar_clustermones_usuario(usuario_id: str):
         "clustermones": clustermones
     }
 
-# ---------------------------------------------------------
-# CATÁLOGO Y CONFIGURACIÓN DEL SISTEMA GACHA
-# ---------------------------------------------------------
-
-class TiradaRequest(BaseModel):
-    usuario_id: str
-
-# ---------------------------------------------------------
-# ENDPOINT: INVOCACIÓN / TIRADA ALEATORIA
-# ---------------------------------------------------------
-@app.post("/clustermones/tirada")
-async def realizar_tirada(datos: TiradaRequest):
-    usuario_id = datos.usuario_id
+@app.post("/clustermones/tirada/{usuario_id}")
+async def realizar_tirada(usuario_id: str):
 
     # 1. Validar formato de ID
     if not ObjectId.is_valid(usuario_id):
@@ -295,4 +284,44 @@ async def realizar_tirada(datos: TiradaRequest):
             "rareza": rareza_obtenida
         },
         "monedas_restantes": saldo_restante
+    }
+
+RECOMPENSA_LIBERACION = 20
+
+@app.delete("/clustermones/{id}")
+async def liberar_clustermon(id: str, usuario_id: str):
+    # 1. Validar IDs
+    if not ObjectId.is_valid(id) or not ObjectId.is_valid(usuario_id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Formato de ID inválido."
+        )
+
+    coleccion_clustermones = app.state.clustermones
+    coleccion_usuarios = app.state.usuarios
+
+    # 2. Buscar la criatura y verificar que pertenezca al usuario solicitante
+    clustermon = await coleccion_clustermones.find_one({
+        "_id": ObjectId(id),
+        "usuario_id": ObjectId(usuario_id)
+    })
+
+    if not clustermon:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Clustermon no encontrado o no te pertenece."
+        )
+
+    # 3. Eliminar el documento en Atlas
+    await coleccion_clustermones.delete_one({"_id": ObjectId(id)})
+
+    # 4. Recompensar al usuario con monedas por reciclarlo
+    await coleccion_usuarios.update_one(
+        {"_id": ObjectId(usuario_id)},
+        {"$inc": {"monedas": RECOMPENSA_LIBERACION}}
+    )
+
+    return {
+        "mensaje": f"Has liberado a {clustermon.get('nombre')}. Recibiste {RECOMPENSA_LIBERACION} monedas.",
+        "clustermon_liberado_id": id
     }
