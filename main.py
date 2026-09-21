@@ -417,3 +417,95 @@ async def subir_nivel_clustermon(id: str, usuario_id: str):
         "monedas_restantes": saldo_actual - costo_subida,
         "costo_siguiente_nivel": siguiente_costo
     }
+
+@app.post("/clustermones/intercambiar/{usuario1_id}/{clustermon1_id}/{usuario2_id}/{clustermon2_id}")
+async def intercambiar_clustermones(
+    usuario1_id: str, 
+    clustermon1_id: str, 
+    usuario2_id: str, 
+    clustermon2_id: str
+):
+    # 1. Validar formato de los cuatro identificadores
+    ids = [usuario1_id, clustermon1_id, usuario2_id, clustermon2_id]
+    if not all(ObjectId.is_valid(x) for x in ids):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Uno o más IDs tienen un formato inválido."
+        )
+
+    if usuario1_id == usuario2_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Un usuario no puede intercambiar consigo mismo."
+        )
+
+    if clustermon1_id == clustermon2_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No se puede intercambiar la misma criatura dos veces."
+        )
+
+    coleccion_usuarios = app.state.usuarios
+    coleccion_clustermones = app.state.clustermones
+
+    # 2. Validar que ambos jugadores existan en Atlas
+    u1 = await coleccion_usuarios.find_one({"_id": ObjectId(usuario1_id)})
+    u2 = await coleccion_usuarios.find_one({"_id": ObjectId(usuario2_id)})
+
+    if not u1 or not u2:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Uno o ambos usuarios no existen."
+        )
+
+    # 3. Validar que la criatura 1 exista y sea de u1
+    c1 = await coleccion_clustermones.find_one({"_id": ObjectId(clustermon1_id)})
+    if not c1:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"La criatura con ID {clustermon1_id} no existe."
+        )
+    if c1.get("usuario_id") != ObjectId(usuario1_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"La criatura {c1.get('nombre')} no le pertenece a {u1.get('usuario')}."
+        )
+
+    # 4. Validar que la criatura 2 exista y sea de u2
+    c2 = await coleccion_clustermones.find_one({"_id": ObjectId(clustermon2_id)})
+    if not c2:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"La criatura con ID {clustermon2_id} no existe."
+        )
+    if c2.get("usuario_id") != ObjectId(usuario2_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"La criatura {c2.get('nombre')} no le pertenece a {u2.get('username')}."
+        )
+
+    # 5. Ejecutar el cruce de dueños en Atlas (Referencias Manuales)
+    await coleccion_clustermones.update_one(
+        {"_id": ObjectId(clustermon1_id)},
+        {"$set": {"usuario_id": ObjectId(usuario2_id)}}
+    )
+    await coleccion_clustermones.update_one(
+        {"_id": ObjectId(clustermon2_id)},
+        {"$set": {"usuario_id": ObjectId(usuario1_id)}}
+    )
+
+    return {
+        "mensaje": f"¡Intercambio completado con éxito!",
+        "detalles": {
+            f"{u1.get('usuario')} recibió": {
+                "id": clustermon2_id,
+                "nombre": c2.get("nombre"),
+                "nivel": c2.get("nivel", 1)
+            },
+            f"{u2.get('usuario')} recibió": {
+                "id": clustermon1_id,
+                "nombre": c1.get("nombre"),
+                "nivel": c1.get("nivel", 1)
+            }
+        }
+    }
