@@ -2,15 +2,272 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Clustermon Dashboard</title>
+  <title>Clustermones Dashboard</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #0f172a;
+      color: #f8fafc;
+      padding: 24px;
+      margin: 0;
+    }
+    h1, h2 { color: #38bdf8; }
+    .card {
+      background: #1e293b;
+      padding: 16px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      max-width: 600px;
+      border: 1px solid #334155;
+    }
+    .badge-monedas {
+      display: inline-block;
+      background: #ca8a04;
+      color: #0f172a;
+      font-weight: bold;
+      padding: 6px 14px;
+      border-radius: 20px;
+      margin: 10px 0;
+      font-size: 1.1em;
+    }
+    input, button {
+      padding: 8px 12px;
+      border-radius: 6px;
+      border: 1px solid #475569;
+      margin: 4px;
+    }
+    input {
+      background: #0f172a;
+      color: #fff;
+      width: 260px;
+    }
+    button {
+      background: #0284c7;
+      color: white;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    button:hover { background: #0369a1; }
+    .btn-reclamar { background: #eab308; color: #0f172a; }
+    .btn-reclamar:hover { background: #ca8a04; }
+    .btn-subir { background: #16a34a; }
+    .btn-subir:hover { background: #15803d; }
+    .btn-liberar { background: #e11d48; }
+    .btn-liberar:hover { background: #be123c; }
+    .criatura {
+      background: #334155;
+      padding: 12px;
+      margin: 8px 0;
+      border-radius: 6px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .resultado {
+      margin-top: 10px;
+      padding: 8px;
+      background: #0f172a;
+      border-radius: 4px;
+      font-family: monospace;
+    }
+  </style>
 </head>
 <body>
-  <main>
-    <h1>Clustermon Dashboard</h1>
-    <p id="server-status">Comprobando estado del servidor...</p>
-  </main>
 
-  <script src="/static/app.js"></script>
+  <h1>🎮 Clustermones Dashboard</h1>
+
+  <!-- SECCIÓN USUARIO -->
+  <div class="card">
+    <h2>Mi Entrenador</h2>
+    <label>ID de Usuario:</label><br>
+    <input type="text" id="usuarioId" placeholder="Pega tu ObjectId de usuario aquí">
+    <button onclick="cargarTodo()">Cargar Entrenador</button>
+    
+    <div id="contenedorMonedas" style="display: none;">
+      <div class="badge-monedas">💰 Monedas: <span id="cantidadMonedas">0</span></div>
+      <br>
+      <button class="btn-reclamar" onclick="reclamarMonedas()">Reclamar Recompensa</button>
+      <button onclick="hacerTirada()">🎲 Hacer Tirada Gacha</button>
+    </div>
+
+    <div id="mensajeAccion" class="resultado" style="display:none;"></div>
+  </div>
+
+  <!-- SECCIÓN INVENTARIO -->
+  <div class="card">
+    <h2>Mis Clustermones</h2>
+    <div id="listaCriaturas">Ingresa tu usuario_id y presiona "Cargar Entrenador".</div>
+  </div>
+
+  <script>
+    const BASE_URL = "http://127.0.0.1:8000";
+
+    // Consulta el saldo y actualiza la etiqueta
+    async function actualizarSaldo() {
+      const usuarioId = document.getElementById("usuarioId").value.trim();
+      if (!usuarioId) return;
+
+      try {
+        const resp = await fetch(`${BASE_URL}/usuarios/${usuarioId}`);
+        if (resp.ok) {
+          const user = await resp.json();
+          document.getElementById("cantidadMonedas").innerText = user.monedas;
+          document.getElementById("contenedorMonedas").style.display = "block";
+        }
+      } catch (err) {
+        console.error("Error al obtener saldo:", err);
+      }
+    }
+
+    // Carga saldo e inventario a la vez
+    async function cargarTodo() {
+      await actualizarSaldo();
+      await cargarInventario();
+    }
+
+    // 1. Reclamar recompensa de monedas
+    async function reclamarMonedas() {
+      const usuarioId = document.getElementById("usuarioId").value.trim();
+      const panel = document.getElementById("mensajeAccion");
+
+      panel.style.display = "block";
+      panel.innerHTML = "Reclamando monedas...";
+
+      try {
+        const resp = await fetch(`${BASE_URL}/usuarios/${usuarioId}/reclamar`, { method: "POST" });
+        const data = await resp.json();
+
+        if (!resp.ok) {
+          panel.innerHTML = `<span style="color:#f87171;">${data.detail || 'Error al reclamar'}</span>`;
+          return;
+        }
+
+        panel.innerHTML = `<span style="color:#eab308;">${data.mensaje || '¡Monedas reclamadas con éxito!'}</span>`;
+        await actualizarSaldo();
+      } catch (err) {
+        panel.innerHTML = `<span style="color:#f87171;">Error de conexión con el servidor.</span>`;
+      }
+    }
+
+    // 2. Consultar inventario
+    async function cargarInventario() {
+      const usuarioId = document.getElementById("usuarioId").value.trim();
+      const contenedor = document.getElementById("listaCriaturas");
+      
+      if (!usuarioId) {
+        alert("Por favor ingresa un ID de usuario");
+        return;
+      }
+
+      contenedor.innerHTML = "Cargando...";
+
+      try {
+        const resp = await fetch(`${BASE_URL}/clustermones/${usuarioId}`);
+        const data = await resp.json();
+
+        if (!resp.ok) {
+          contenedor.innerHTML = `<span style="color:#f87171;">Error: ${data.detail}</span>`;
+          return;
+        }
+
+        if (!data.clustermones || data.clustermones.length === 0) {
+          contenedor.innerHTML = "No tienes Clustermones aún. ¡Haz una tirada!";
+          return;
+        }
+
+        contenedor.innerHTML = "";
+        data.clustermones.forEach(c => {
+          contenedor.innerHTML += `
+            <div class="criatura">
+              <div>
+                <strong>${c.nombre}</strong> (${c.rareza}) - Nivel: <b>${c.nivel || 1}</b><br>
+                <small style="color:#94a3b8;">ID: ${c.id}</small>
+              </div>
+              <div>
+                <button class="btn-subir" onclick="subirNivel('${c.id}')">Subir Nivel</button>
+                <button class="btn-liberar" onclick="liberar('${c.id}')">Liberar</button>
+              </div>
+            </div>
+          `;
+        });
+      } catch (err) {
+        contenedor.innerHTML = `<span style="color:#f87171;">Error al conectar con la API</span>`;
+      }
+    }
+
+    // 3. Ejecutar tirada gacha
+    async function hacerTirada() {
+      const usuarioId = document.getElementById("usuarioId").value.trim();
+      const panel = document.getElementById("mensajeAccion");
+
+      panel.style.display = "block";
+      panel.innerHTML = "Invocando...";
+
+      try {
+        const resp = await fetch(`${BASE_URL}/clustermones/tirada/${usuarioId}`, { method: "POST" });
+        const data = await resp.json();
+
+        if (!resp.ok) {
+          panel.innerHTML = `<span style="color:#f87171;">${data.detail}</span>`;
+          return;
+        }
+
+        panel.innerHTML = `<span style="color:#4ade80;">${data.mensaje}</span>`;
+        await actualizarSaldo();
+        await cargarInventario();
+      } catch (err) {
+        panel.innerHTML = `<span style="color:#f87171;">Error de conexión</span>`;
+      }
+    }
+
+    // 4. Subir nivel
+    async function subirNivel(clustermonId) {
+      const usuarioId = document.getElementById("usuarioId").value.trim();
+      const panel = document.getElementById("mensajeAccion");
+
+      try {
+        const resp = await fetch(`${BASE_URL}/clustermones/${clustermonId}/subir-nivel/${usuarioId}`, { method: "POST" });
+        const data = await resp.json();
+
+        panel.style.display = "block";
+        if (!resp.ok) {
+          panel.innerHTML = `<span style="color:#f87171;">${data.detail}</span>`;
+          return;
+        }
+
+        panel.innerHTML = `<span style="color:#4ade80;">${data.mensaje} (Gastaste ${data.monedas_gastadas} monedas)</span>`;
+        await actualizarSaldo();
+        await cargarInventario();
+      } catch (err) {
+        alert("Error al subir de nivel");
+      }
+    }
+
+    // 5. Liberar criatura
+    async function liberar(clustermonId) {
+      const usuarioId = document.getElementById("usuarioId").value.trim();
+      const panel = document.getElementById("mensajeAccion");
+
+      if (!confirm("¿Seguro que quieres liberar este Clustermon por 20 monedas?")) return;
+
+      try {
+        const resp = await fetch(`${BASE_URL}/clustermones/${clustermonId}/usuario/${usuarioId}`, { method: "DELETE" });
+        const data = await resp.json();
+
+        panel.style.display = "block";
+        if (!resp.ok) {
+          panel.innerHTML = `<span style="color:#f87171;">${data.detail}</span>`;
+          return;
+        }
+
+        panel.innerHTML = `<span style="color:#fbbf24;">${data.mensaje}</span>`;
+        await actualizarSaldo();
+        await cargarInventario();
+      } catch (err) {
+        alert("Error al liberar");
+      }
+    }
+  </script>
+
 </body>
 </html>
