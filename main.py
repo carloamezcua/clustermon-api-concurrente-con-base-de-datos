@@ -52,7 +52,7 @@ app = FastAPI(
 # MODELOS PYDANTIC
 # -------------------------------------------------------------
 class UsuarioRegistro(BaseModel):
-    username: str = Field(..., min_length=3, max_length=20, description="Nombre de usuario")
+    usuario: str = Field(..., min_length=3, max_length=20, description="Nombre de usuario")
     password: str = Field(..., min_length=4, max_length=50, description="Contraseña")
 
 # -------------------------------------------------------------
@@ -67,7 +67,7 @@ async def registrar_usuario(datos: UsuarioRegistro):
     coleccion_usuarios = app.state.usuarios
     
     # 1. Validar que el nombre de usuario no esté repetido
-    usuario_existente = await coleccion_usuarios.find_one({"username": datos.username})
+    usuario_existente = await coleccion_usuarios.find_one({"usuario": datos.usuario})
     if usuario_existente:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -76,7 +76,7 @@ async def registrar_usuario(datos: UsuarioRegistro):
     
     # 2. Estructura del nuevo entrenador
     nuevo_usuario = {
-        "usuario": datos.username,
+        "usuario": datos.usuario,
         "contraseña": datos.password,
         "monedas": 100,            # Monedas de bienvenida
         "ultimo_reclamo": None      # Control de cooldown
@@ -88,7 +88,7 @@ async def registrar_usuario(datos: UsuarioRegistro):
     return {
         "mensaje": "Usuario registrado con éxito",
         "id": str(resultado.inserted_id),
-        "usuario": datos.username,
+        "usuario": datos.usuario,
         "monedas": 100
     }
 
@@ -517,7 +517,7 @@ async def intercambiar_clustermones(
     if c2.get("usuario_id") != ObjectId(usuario2_id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"La criatura {c2.get('nombre')} no le pertenece a {u2.get('username')}."
+            detail=f"La criatura {c2.get('nombre')} no le pertenece a {u2.get('usuario')}."
         )
 
     # 5. Ejecutar el cruce de dueños en Atlas (Referencias Manuales)
