@@ -8,6 +8,8 @@ from dotenv import load_dotenv
 from bson import ObjectId
 from datetime import datetime, timezone
 
+from clusterdex import CATALOGO_CLUSTERMONES, PROBABILIDADES, COSTO_TIRADA
+
 # 1. Cargar las variables desde el archivo .env
 load_dotenv()
 
@@ -165,6 +167,16 @@ async def reclamar_monedas(id: str):
         "monedas_actuales": nuevo_balance
     }
 
+@app.get("/clustermones/clusterdex")
+async def obtener_clusterdex():
+    total_especies = sum(len(especies) for especies in CATALOGO_CLUSTERMONES.values())
+    return {
+        "total_especies_existentes": total_especies,
+        "clusterdex": CATALOGO_CLUSTERMONES,
+        "probabilidades": PROBABILIDADES,
+        "costo_tirada": COSTO_TIRADA
+    }
+
 @app.get("/clustermones/{usuario_id}")
 async def listar_clustermones_usuario(usuario_id: str):
     # 1. Validar formato del ObjectId
@@ -209,42 +221,6 @@ async def listar_clustermones_usuario(usuario_id: str):
 # ---------------------------------------------------------
 # CATÁLOGO Y CONFIGURACIÓN DEL SISTEMA GACHA
 # ---------------------------------------------------------
-COSTO_TIRADA = 100
-
-CATALOGO_CLUSTERMONES = {
-    "Común": [
-        "Bitmon",
-        "BytePawn",
-        "Pingling"
-    ],
-    "Poco Común": [
-        "PortFox",
-        "Scriptor",
-        "PacketBat"
-    ],
-    "Raro": [
-        "CacheHound",
-        "ProxyGolem",
-        "ThreadViper"
-    ],
-    "Épico": [
-        "KernelDragon",
-        "RootTitan"
-    ],
-    "Legendario": [
-        "ZeroDayPhoenix",
-        "MainframeBehemoth"
-    ]
-}
-
-# Probabilidades exactas (suman 100%, Legendario es 1 de cada 1000)
-PROBABILIDADES = {
-    "Común": 55.0,
-    "Poco Común": 25.0,
-    "Raro": 14.0,
-    "Épico": 5.9,
-    "Legendario": 0.1
-}
 
 class TiradaRequest(BaseModel):
     usuario_id: str
