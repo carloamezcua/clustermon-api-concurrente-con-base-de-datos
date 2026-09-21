@@ -1,4 +1,5 @@
 import os
+import random
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, status
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -203,4 +204,119 @@ async def listar_clustermones_usuario(usuario_id: str):
         "admin": usuario.get("usuario"),
         "total_clustermones": len(clustermones),
         "clustermones": clustermones
+    }
+
+# ---------------------------------------------------------
+# CATÁLOGO Y CONFIGURACIÓN DEL SISTEMA GACHA
+# ---------------------------------------------------------
+COSTO_TIRADA = 100
+
+CATALOGO_CLUSTERMONES = {
+    "Común": [
+        "Bitmon",
+        "BytePawn",
+        "Pingling"
+    ],
+    "Poco Común": [
+        "PortFox",
+        "Scriptor",
+        "PacketBat"
+    ],
+    "Raro": [
+        "CacheHound",
+        "ProxyGolem",
+        "ThreadViper"
+    ],
+    "Épico": [
+        "KernelDragon",
+        "RootTitan"
+    ],
+    "Legendario": [
+        "ZeroDayPhoenix",
+        "MainframeBehemoth"
+    ]
+}
+
+# Probabilidades exactas (suman 100%, Legendario es 1 de cada 1000)
+PROBABILIDADES = {
+    "Común": 55.0,
+    "Poco Común": 25.0,
+    "Raro": 14.0,
+    "Épico": 5.9,
+    "Legendario": 0.1
+}
+
+class TiradaRequest(BaseModel):
+    usuario_id: str
+
+# ---------------------------------------------------------
+# ENDPOINT: INVOCACIÓN / TIRADA ALEATORIA
+# ---------------------------------------------------------
+@app.post("/clustermones/tirada")
+async def realizar_tirada(datos: TiradaRequest):
+    usuario_id = datos.usuario_id
+
+    # 1. Validar formato de ID
+    if not ObjectId.is_valid(usuario_id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Formato de ID inválido."
+        )
+
+    coleccion_usuarios = app.state.usuarios
+    usuario = await coleccion_usuarios.find_one({"_id": ObjectId(usuario_id)})
+
+    if not usuario:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Usuario no encontrado."
+        )
+
+    # 2. Validar saldo suficiente
+    saldo_actual = usuario.get("monedas", 0)
+    if saldo_actual < COSTO_TIRADA:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Monedas insuficientes. Tienes {saldo_actual} y la tirada cuesta {COSTO_TIRADA}."
+        )
+
+    # 3. Descontar las monedas en la base de datos
+    await coleccion_usuarios.update_one(
+        {"_id": ObjectId(usuario_id)},
+        {"$inc": {"monedas": -COSTO_TIRADA}}
+    )
+
+    # 4. Sorteo ponderado de rareza y selección de especie
+    rarezas = list(PROBABILIDADES.keys())
+    pesos = list(PROBABILIDADES.values())
+
+    rareza_obtenida = random.choices(rarezas, weights=pesos, k=1)[0]
+    nombre_obtenido = random.choice(CATALOGO_CLUSTERMONES[rareza_obtenida])
+
+    # 5. Guardar la nueva criatura vinculada al usuario
+    nuevo_clustermon = {
+        "usuario_id": ObjectId(usuario_id),
+        "nombre": nombre_obtenido,
+        "rareza": rareza_obtenida
+    }
+
+    coleccion_clustermones = app.state.clustermones
+    resultado = await coleccion_clustermones.insert_one(nuevo_clustermon)
+
+    saldo_restante = saldo_actual - COSTO_TIRADA
+
+    mensaje = (
+        f"¡INCREÍBLE! ¡Obtuviste una criatura LEGENDARIA: {nombre_obtenido}!"
+        if rareza_obtenida == "Legendario"
+        else f"¡Invocación exitosa! Obtuviste un {nombre_obtenido} ({rareza_obtenida})."
+    )
+
+    return {
+        "mensaje": mensaje,
+        "clustermon": {
+            "id": str(resultado.inserted_id),
+            "nombre": nombre_obtenido,
+            "rareza": rareza_obtenida
+        },
+        "monedas_restantes": saldo_restante
     }
