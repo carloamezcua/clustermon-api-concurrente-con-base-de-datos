@@ -160,6 +160,47 @@ async def reclamar_monedas(id: str):
     nuevo_balance = usuario.get("monedas", 0) + RECOMPENSA_MONEDAS
 
     return {
-        "mensaje": f"¡Reclamaste tu recompensa diaria de {RECOMPENSA_MONEDAS} monedas!",
+        "mensaje": f"Reclamaste tu recompensa diaria de {RECOMPENSA_MONEDAS} monedas",
         "monedas_actuales": nuevo_balance
+    }
+
+@app.get("/clustermones/{usuario_id}")
+async def listar_clustermones_usuario(usuario_id: str):
+    # 1. Validar formato del ObjectId
+    if not ObjectId.is_valid(usuario_id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Formato de ID inválido."
+        )
+
+    # 2. Verificar que el usuario exista en Atlas
+    coleccion_usuarios = app.state.usuarios
+    usuario = await coleccion_usuarios.find_one({"_id": ObjectId(usuario_id)})
+    if not usuario:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Usuario no encontrado."
+        )
+
+    # 3. Buscar todas las criaturas asociadas a ese usuario
+    coleccion_clustermones = app.state.clustermones
+    cursor = coleccion_clustermones.find({"usuario_id": ObjectId(usuario_id)})
+    
+    # 4. Formatear la lista para devolver JSON limpio
+    clustermones = []
+    async for c in cursor:
+        clustermones.append({
+            "id": str(c["_id"]),
+            "usuario_id": str(c["usuario_id"]),
+            "nombre": c.get("nombre"),
+            "rareza": c.get("rareza"),
+            # "nivel": c.get("nivel", 1),
+            # "ataque": c.get("ataque"),
+            # "defensa": c.get("defensa")
+        })
+
+    return {
+        "admin": usuario.get("usuario"),
+        "total_clustermones": len(clustermones),
+        "clustermones": clustermones
     }
