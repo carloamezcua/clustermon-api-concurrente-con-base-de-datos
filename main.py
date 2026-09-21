@@ -1,5 +1,7 @@
 import os
 import random
+import asyncio
+import time
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, status
 from fastapi.responses import FileResponse
@@ -546,6 +548,41 @@ async def intercambiar_clustermones(
             }
         }
     }
+
+# Función sincrónica que simula carga de CPU (bloqueo simulado de 4 segundos)
+def simular_calculo_pesado(nombre: str, nivel: int) -> dict:
+    time.sleep(4)  # Simula el cálculo intensivo de combinatoria de combate
+    poder = round((nivel * 150) * 1.07)
+    return {
+        "clustermon": nombre,
+        "nivel": nivel,
+        "poder_calculado": poder,
+        "estado": "Simulación completada en hilo secundario"
+    }
+
+@app.post("/clustermones/{id}/simular-batalla")
+async def simular_batalla(id: str):
+    if not ObjectId.is_valid(id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, 
+            detail="ID inválido."
+        )
+    
+    # 1. Búsqueda asíncrona en MongoDB Atlas (I/O-bound)
+    clustermon = await app.state.clustermones.find_one({"_id": ObjectId(id)})
+    if not clustermon:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail="Clustermon no encontrado."
+        )
+
+    # 2. Delegación de la tarea de CPU al ThreadPool sin congelar el Event Loop
+    resultado = await asyncio.to_thread(
+        simular_calculo_pesado,
+        clustermon.get("nombre"),
+        clustermon.get("nivel", 1)
+    )
+    return resultado
 
 @app.get("/app")
 async def servir_frontend():

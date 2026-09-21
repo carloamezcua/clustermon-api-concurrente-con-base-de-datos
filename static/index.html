@@ -202,8 +202,9 @@
               </div>
               <div>
                 <button class="btn-subir" onclick="subirNivel('${c.id}')">Subir Nivel</button>
+                <button style="background: #eab308; color: #0f172a;" onclick="simularBatalla('${c.id}')">⚔️ Simular</button>
                 <button class="btn-liberar" onclick="liberar('${c.id}')">Liberar</button>
-              </div>
+                </div>
             </div>
           `;
         });
@@ -317,6 +318,26 @@
         panel.innerHTML = `<span style="color:#f87171;">Error de conexión con el servidor.</span>`;
       }
     }
-  </script>
+
+    async function simularBatalla(clustermonId) {
+        const panel = document.getElementById("mensajeAccion");
+        panel.style.display = "block";
+        panel.innerHTML = "⏳ Simulando batalla en segundo plano (demora 4s)...";
+
+        try {
+            const resp = await fetch(`${BASE_URL}/clustermones/${clustermonId}/simular-batalla`, { method: "POST" });
+            const data = await resp.json();
+
+            if (!resp.ok) {
+            panel.innerHTML = `<span style="color:#f87171;">${data.detail || 'Error en la simulación'}</span>`;
+            return;
+            }
+
+            panel.innerHTML = `<span style="color:#eab308;">⚔️ ¡${data.clustermon}! Poder estimado: ${data.poder_calculado} (${data.estado})</span>`;
+        } catch (err) {
+            panel.innerHTML = `<span style="color:#f87171;">Error de conexión con el servidor.</span>`;
+        }
+    }
+</script>
 </body>
 </html>
