@@ -263,7 +263,7 @@ async def realizar_tirada(usuario_id: str):
         "usuario_id": ObjectId(usuario_id),
         "nombre": nombre_obtenido,
         "rareza": rareza_obtenida,
-        "nivel": 1  # <-- Aquí se inicializa en MongoDB
+        "nivel": 1
     }
 
     coleccion_clustermones = app.state.clustermones
@@ -283,41 +283,53 @@ async def realizar_tirada(usuario_id: str):
             "id": str(resultado.inserted_id),
             "nombre": nombre_obtenido,
             "rareza": rareza_obtenida,
-            "nivel": 1  # <-- Aquí se expone en la respuesta JSON
+            "nivel": 1
         },
         "monedas_restantes": saldo_restante
     }
 
+class LiberarRequest(BaseModel):
+    usuario_id: str
+
 RECOMPENSA_LIBERACION = 20
 
-@app.delete("/clustermones/{id}")
+@app.delete("/clustermones/{id}/usuario/{usuario_id}")
 async def liberar_clustermon(id: str, usuario_id: str):
-    # 1. Validar IDs
+    # 1. Validar que ambos sean formatos válidos de ObjectId
     if not ObjectId.is_valid(id) or not ObjectId.is_valid(usuario_id):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Formato de ID inválido."
         )
 
-    coleccion_clustermones = app.state.clustermones
     coleccion_usuarios = app.state.usuarios
+    coleccion_clustermones = app.state.clustermones
 
-    # 2. Buscar la criatura y verificar que pertenezca al usuario solicitante
-    clustermon = await coleccion_clustermones.find_one({
-        "_id": ObjectId(id),
-        "usuario_id": ObjectId(usuario_id)
-    })
+    # 2. Validar que el usuario exista
+    usuario = await coleccion_usuarios.find_one({"_id": ObjectId(usuario_id)})
+    if not usuario:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="El usuario no existe."
+        )
 
+    # 3. Validar que la criatura exista
+    clustermon = await coleccion_clustermones.find_one({"_id": ObjectId(id)})
     if not clustermon:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Clustermon no encontrado o no te pertenece."
+            detail="El Clustermon no existe."
         )
 
-    # 3. Eliminar el documento en Atlas
-    await coleccion_clustermones.delete_one({"_id": ObjectId(id)})
+    # 4. Validar que la criatura realmente le pertenezca a ese usuario
+    if clustermon.get("usuario_id") != ObjectId(usuario_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Este Clustermon no te pertenece. No puedes liberarlo."
+        )
 
-    # 4. Recompensar al usuario con monedas por reciclarlo
+    # 5. Borrar criatura y abonar recompensa
+    await coleccion_clustermones.delete_one({"_id": ObjectId(id)})
     await coleccion_usuarios.update_one(
         {"_id": ObjectId(usuario_id)},
         {"$inc": {"monedas": RECOMPENSA_LIBERACION}}
