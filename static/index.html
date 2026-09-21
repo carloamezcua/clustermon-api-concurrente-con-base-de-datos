@@ -34,22 +34,25 @@
       padding: 8px 12px;
       border-radius: 6px;
       border: 1px solid #475569;
-      margin: 4px;
+      margin: 4px 0;
     }
     input {
       background: #0f172a;
       color: #fff;
-      width: 260px;
+      width: calc(100% - 20px);
     }
     button {
       background: #0284c7;
       color: white;
       cursor: pointer;
       font-weight: bold;
+      margin-right: 6px;
     }
     button:hover { background: #0369a1; }
     .btn-reclamar { background: #eab308; color: #0f172a; }
     .btn-reclamar:hover { background: #ca8a04; }
+    .btn-trade { background: #8b5cf6; }
+    .btn-trade:hover { background: #7c3aed; }
     .btn-subir { background: #16a34a; }
     .btn-subir:hover { background: #15803d; }
     .btn-liberar { background: #e11d48; }
@@ -87,10 +90,25 @@
       <div class="badge-monedas">💰 Monedas: <span id="cantidadMonedas">0</span></div>
       <br>
       <button class="btn-reclamar" onclick="reclamarMonedas()">Reclamar Recompensa</button>
-      <button onclick="hacerTirada()">🎲 Hacer Tirada Gacha</button>
+      <button onclick="hacerTirada()">🎲 Tirada Gacha</button>
     </div>
 
     <div id="mensajeAccion" class="resultado" style="display:none;"></div>
+  </div>
+
+  <!-- SECCIÓN INTERCAMBIO -->
+  <div class="card">
+    <h2>🤝 Centro de Intercambio</h2>
+    <label><b>Tus Datos (Jugador 1):</b></label>
+    <input type="text" id="tradeU1" placeholder="Tu ID de usuario">
+    <input type="text" id="tradeC1" placeholder="ID de tu Clustermon a entregar">
+
+    <label style="margin-top: 8px; display:block;"><b>Datos de tu Compañero (Jugador 2):</b></label>
+    <input type="text" id="tradeU2" placeholder="ID del usuario receptor">
+    <input type="text" id="tradeC2" placeholder="ID del Clustermon a recibir">
+
+    <button class="btn-trade" onclick="ejecutarIntercambio()">Realizar Intercambio</button>
+    <div id="mensajeTrade" class="resultado" style="display:none;"></div>
   </div>
 
   <!-- SECCIÓN INVENTARIO -->
@@ -102,7 +120,6 @@
   <script>
     const BASE_URL = "http://127.0.0.1:8000";
 
-    // Consulta el saldo y actualiza la etiqueta
     async function actualizarSaldo() {
       const usuarioId = document.getElementById("usuarioId").value.trim();
       if (!usuarioId) return;
@@ -113,19 +130,20 @@
           const user = await resp.json();
           document.getElementById("cantidadMonedas").innerText = user.monedas;
           document.getElementById("contenedorMonedas").style.display = "block";
+          
+          // Autorrellena el campo del trade con tu usuario actual
+          document.getElementById("tradeU1").value = usuarioId;
         }
       } catch (err) {
         console.error("Error al obtener saldo:", err);
       }
     }
 
-    // Carga saldo e inventario a la vez
     async function cargarTodo() {
       await actualizarSaldo();
       await cargarInventario();
     }
 
-    // 1. Reclamar recompensa de monedas
     async function reclamarMonedas() {
       const usuarioId = document.getElementById("usuarioId").value.trim();
       const panel = document.getElementById("mensajeAccion");
@@ -149,7 +167,6 @@
       }
     }
 
-    // 2. Consultar inventario
     async function cargarInventario() {
       const usuarioId = document.getElementById("usuarioId").value.trim();
       const contenedor = document.getElementById("listaCriaturas");
@@ -195,7 +212,6 @@
       }
     }
 
-    // 3. Ejecutar tirada gacha
     async function hacerTirada() {
       const usuarioId = document.getElementById("usuarioId").value.trim();
       const panel = document.getElementById("mensajeAccion");
@@ -220,7 +236,6 @@
       }
     }
 
-    // 4. Subir nivel
     async function subirNivel(clustermonId) {
       const usuarioId = document.getElementById("usuarioId").value.trim();
       const panel = document.getElementById("mensajeAccion");
@@ -243,7 +258,6 @@
       }
     }
 
-    // 5. Liberar criatura
     async function liberar(clustermonId) {
       const usuarioId = document.getElementById("usuarioId").value.trim();
       const panel = document.getElementById("mensajeAccion");
@@ -267,7 +281,42 @@
         alert("Error al liberar");
       }
     }
-  </script>
 
+    async function ejecutarIntercambio() {
+      const u1 = document.getElementById("tradeU1").value.trim();
+      const c1 = document.getElementById("tradeC1").value.trim();
+      const u2 = document.getElementById("tradeU2").value.trim();
+      const c2 = document.getElementById("tradeC2").value.trim();
+      const panel = document.getElementById("mensajeTrade");
+
+      if (!u1 || !c1 || !u2 || !c2) {
+        alert("Debes llenar los 4 campos para realizar el intercambio.");
+        return;
+      }
+
+      panel.style.display = "block";
+      panel.innerHTML = "Procesando intercambio...";
+
+      try {
+        const url = `${BASE_URL}/clustermones/intercambiar/${u1}/${c1}/${u2}/${c2}`;
+        const resp = await fetch(url, { method: "POST" });
+        const data = await resp.json();
+
+        if (!resp.ok) {
+          panel.innerHTML = `<span style="color:#f87171;">${data.detail || 'Error en el intercambio'}</span>`;
+          return;
+        }
+
+        panel.innerHTML = `<span style="color:#a78bfa;">${data.mensaje}</span>`;
+
+        const usuarioActivo = document.getElementById("usuarioId").value.trim();
+        if (usuarioActivo === u1 || usuarioActivo === u2) {
+          await cargarInventario();
+        }
+      } catch (err) {
+        panel.innerHTML = `<span style="color:#f87171;">Error de conexión con el servidor.</span>`;
+      }
+    }
+  </script>
 </body>
 </html>
