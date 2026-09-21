@@ -258,11 +258,12 @@ async def realizar_tirada(usuario_id: str):
     rareza_obtenida = random.choices(rarezas, weights=pesos, k=1)[0]
     nombre_obtenido = random.choice(CATALOGO_CLUSTERMONES[rareza_obtenida])
 
-    # 5. Guardar la nueva criatura vinculada al usuario
+    # 5. Guardar la nueva criatura vinculada al usuario (con nivel inicial 1)
     nuevo_clustermon = {
         "usuario_id": ObjectId(usuario_id),
         "nombre": nombre_obtenido,
-        "rareza": rareza_obtenida
+        "rareza": rareza_obtenida,
+        "nivel": 1  # <-- Aquí se inicializa en MongoDB
     }
 
     coleccion_clustermones = app.state.clustermones
@@ -281,7 +282,8 @@ async def realizar_tirada(usuario_id: str):
         "clustermon": {
             "id": str(resultado.inserted_id),
             "nombre": nombre_obtenido,
-            "rareza": rareza_obtenida
+            "rareza": rareza_obtenida,
+            "nivel": 1  # <-- Aquí se expone en la respuesta JSON
         },
         "monedas_restantes": saldo_restante
     }
