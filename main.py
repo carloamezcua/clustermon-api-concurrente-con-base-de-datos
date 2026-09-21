@@ -339,3 +339,81 @@ async def liberar_clustermon(id: str, usuario_id: str):
         "mensaje": f"Has liberado a {clustermon.get('nombre')}. Recibiste {RECOMPENSA_LIBERACION} monedas.",
         "clustermon_liberado_id": id
     }
+
+COSTO_BASE = 20
+FACTOR_EXPONENCIAL = 1.07
+
+@app.post("/clustermones/{id}/subir-nivel/{usuario_id}")
+async def subir_nivel_clustermon(id: str, usuario_id: str):
+    # 1. Validar formato de IDs
+    if not ObjectId.is_valid(id) or not ObjectId.is_valid(usuario_id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Formato de ID inválido."
+        )
+
+    coleccion_usuarios = app.state.usuarios
+    coleccion_clustermones = app.state.clustermones
+
+    # 2. Validar que el usuario exista
+    usuario = await coleccion_usuarios.find_one({"_id": ObjectId(usuario_id)})
+    if not usuario:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="El usuario no existe."
+        )
+
+    # 3. Validar que la criatura exista
+    clustermon = await coleccion_clustermones.find_one({"_id": ObjectId(id)})
+    if not clustermon:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="El Clustermon no existe."
+        )
+
+    # 4. Validar pertenencia
+    if clustermon.get("usuario_id") != ObjectId(usuario_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Este Clustermon no te pertenece. No puedes subirlo de nivel."
+        )
+
+    # 5. Cálculo dinámico del costo exponencial
+    nivel_actual = clustermon.get("nivel", 1)
+    costo_subida = round(COSTO_BASE * (FACTOR_EXPONENCIAL ** (nivel_actual - 1)))
+
+    # 6. Validar saldo de monedas
+    saldo_actual = usuario.get("monedas", 0)
+    if saldo_actual < costo_subida:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Monedas insuficientes. Subir a nivel {nivel_actual + 1} cuesta "
+                f"{costo_subida} monedas y tienes {saldo_actual}."
+            )
+        )
+
+    # 7. Cobrar monedas
+    await coleccion_usuarios.update_one(
+        {"_id": ObjectId(usuario_id)},
+        {"$inc": {"monedas": -costo_subida}}
+    )
+
+    # 8. Incrementar el nivel en Atlas
+    criatura_actualizada = await coleccion_clustermones.find_one_and_update(
+        {"_id": ObjectId(id)},
+        {"$inc": {"nivel": 1}},
+        return_document=True
+    )
+
+    siguiente_nivel = criatura_actualizada.get("nivel", 1)
+    siguiente_costo = round(COSTO_BASE * (FACTOR_EXPONENCIAL ** (siguiente_nivel - 1)))
+
+    return {
+        "mensaje": f"¡Tu {clustermon.get('nombre')} subió a nivel {siguiente_nivel}!",
+        "clustermon_id": id,
+        "nuevo_nivel": siguiente_nivel,
+        "monedas_gastadas": costo_subida,
+        "monedas_restantes": saldo_actual - costo_subida,
+        "costo_siguiente_nivel": siguiente_costo
+    }
