@@ -4,6 +4,7 @@ from fastapi import FastAPI, HTTPException, status
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
+from bson import ObjectId
 
 # 1. Cargar las variables desde el archivo .env
 load_dotenv()
@@ -84,4 +85,33 @@ async def registrar_usuario(datos: UsuarioRegistro):
         "id": str(resultado.inserted_id),
         "username": datos.username,
         "coins": 100
+    }
+
+@app.get("/usuarios/{id}")
+async def obtener_usuario(id: str):
+    # 1. Validar que la cadena tenga formato de ObjectId
+    if not ObjectId.is_valid(id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Formato de ID inválido."
+        )
+
+    coleccion_usuarios = app.state.usuarios
+    
+    # 2. Buscar al entrenador en Atlas
+    usuario = await coleccion_usuarios.find_one({"_id": ObjectId(id)})
+    
+    # 3. Validar si existe
+    if not usuario:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Usuario no encontrado."
+        )
+
+    # 4. Retornar los datos del perfil (sin exponer la contraseña)
+    return {
+        "id": str(usuario["_id"]),
+        "username": usuario.get("username"),
+        "coins": usuario.get("coins", 0),
+        "last_claim": usuario.get("last_claim")
     }
