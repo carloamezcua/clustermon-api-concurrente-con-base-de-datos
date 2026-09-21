@@ -2,6 +2,7 @@ import os
 import random
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, status
+from fastapi.responses import FileResponse
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
@@ -123,48 +124,83 @@ async def obtener_usuario(id: str):
 COOLDOWN_RECLAMO_SEGUNDOS = 60
 RECOMPENSA_MONEDAS = 50
 
-@app.post("/usuarios/{id}/reclamar")
-async def reclamar_monedas(id: str):
-    if not ObjectId.is_valid(id):
-        raise HTTPException(status_code=400, detail="Formato de ID inválido.")
+@app.post("/usuarios/{usuario_id}/reclamar")
+async def reclamar_monedas(usuario_id: str):
+    if not ObjectId.is_valid(usuario_id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Formato de ID inválido."
+        )
 
     coleccion_usuarios = app.state.usuarios
-    usuario = await coleccion_usuarios.find_one({"_id": ObjectId(id)})
+    usuario = await coleccion_usuarios.find_one({"_id": ObjectId(usuario_id)})
 
     if not usuario:
-        raise HTTPException(status_code=404, detail="Usuario no encontrado.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="El usuario no existe."
+        )
 
+    # Obtenemos la hora actual en UTC consciente de zona horaria
     ahora = datetime.now(timezone.utc)
     ultimo_reclamo = usuario.get("ultimo_reclamo")
 
     if ultimo_reclamo:
+        # Aseguramos que la fecha leída de Atlas tenga zona UTC
         if ultimo_reclamo.tzinfo is None:
             ultimo_reclamo = ultimo_reclamo.replace(tzinfo=timezone.utc)
+
+        tiempo_transcurrido = (ahora - ultimo_reclamo).total_seconds()
+
+        if tiempo_transcurrido < COOLDOWN_RECLAMO_SEGUNDOS:
+            segundos_restantes = int(COOLDOWN_RECLAMO_SEGUNDOS - tiempo_transcurrido)
             
-        segundos_pasados = (ahora - ultimo_reclamo).total_seconds()
-        
-        if segundos_pasados < COOLDOWN_RECLAMO_SEGUNDOS:
-            segundos_restantes = int(COOLDOWN_RECLAMO_SEGUNDOS - segundos_pasados)
-            horas_restantes = segundos_restantes // 3600
-            minutos_restantes = (segundos_restantes % 3600) // 60
+            # Formato legible: muestra segundos si falta menos de 1 minuto
+            if segundos_restantes < 60:
+                tiempo_str = f"{segundos_restantes}s"
+            else:
+                m = segundos_restantes // 60
+                s = segundos_restantes % 60
+                tiempo_str = f"{m}m {s}s"
+
             raise HTTPException(
-                status_code=400,
-                detail=f"Recompensa diaria no disponible. Espera {horas_restantes}h {minutos_restantes}m."
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Recompensa no disponible. Espera {tiempo_str}."
             )
 
+    # Si pasó la validación, actualizamos saldo y la fecha del reclamo
     await coleccion_usuarios.update_one(
-        {"_id": ObjectId(id)},
+        {"_id": ObjectId(usuario_id)},
         {
             "$inc": {"monedas": RECOMPENSA_MONEDAS},
             "$set": {"ultimo_reclamo": ahora}
         }
     )
 
-    nuevo_balance = usuario.get("monedas", 0) + RECOMPENSA_MONEDAS
+    return {
+        "mensaje": f"¡Has reclamado {RECOMPENSA_MONEDAS} monedas con éxito!",
+        "monedas_actuales": usuario.get("monedas", 0) + RECOMPENSA_MONEDAS
+    }
+
+@app.get("/usuarios/{usuario_id}")
+async def obtener_usuario(usuario_id: str):
+    if not ObjectId.is_valid(usuario_id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Formato de ID inválido."
+        )
+
+    usuario = await app.state.usuarios.find_one({"_id": ObjectId(usuario_id)})
+    if not usuario:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Usuario no encontrado."
+        )
 
     return {
-        "mensaje": f"Reclamaste tu recompensa diaria de {RECOMPENSA_MONEDAS} monedas",
-        "monedas_actuales": nuevo_balance
+        "id": str(usuario["_id"]),
+        "usuario": usuario.get("usuario"),
+        "monedas": usuario.get("monedas", 0)
     }
 
 @app.get("/clustermones/clusterdex")
@@ -207,7 +243,7 @@ async def listar_clustermones_usuario(usuario_id: str):
             "usuario_id": str(c["usuario_id"]),
             "nombre": c.get("nombre"),
             "rareza": c.get("rareza"),
-            # "nivel": c.get("nivel", 1),
+            "nivel": c.get("nivel", 1),
             # "ataque": c.get("ataque"),
             # "defensa": c.get("defensa")
         })
@@ -509,3 +545,7 @@ async def intercambiar_clustermones(
             }
         }
     }
+
+@app.get("/app")
+async def servir_frontend():
+    return FileResponse("static/index.html")
