@@ -13,6 +13,7 @@ La solución utiliza una arquitectura desacoplada: FastAPI expone la lógica de 
 | Backend | FastAPI, Uvicorn | Definición de rutas REST y servidor ASGI de desarrollo |
 | Acceso a datos | Motor, `AsyncIOMotorClient` | Conexiones y operaciones asíncronas con MongoDB |
 | Validación | Pydantic | Validación del registro de usuarios mediante modelos y restricciones de longitud |
+| Concurrencia | `asyncio.to_thread` | Ejecución de la simulación de batalla en un hilo secundario sin bloquear el event loop |
 | Base de datos | MongoDB Atlas | Persistencia documental en la nube |
 | Modelo de relación | Referencias manuales con `ObjectId` | Asociación entre usuarios y Clustermones mediante `usuario_id` |
 | Frontend | HTML5, CSS3 y JavaScript | Dashboard web y presentación de la información |
@@ -95,6 +96,10 @@ El intercambio recibe dos usuarios y una criatura de cada uno. Valida que los cu
 
 La implementación realiza el cruce lógico de manera consecutiva; no utiliza una sesión ni una transacción MongoDB formal. Por ello, la atomicidad transaccional completa requeriría añadir una transacción explícita para garantizar que ambas actualizaciones se confirmen o se deshagan juntas.
 
+### Simulación de batalla y concurrencia
+
+La simulación de batalla representa una tarea de CPU que tarda aproximadamente cuatro segundos. El endpoint primero realiza la consulta asíncrona del Clustermon y después delega el cálculo sincrónico a `asyncio.to_thread`, evitando bloquear el event loop de FastAPI. El resultado incluye el nombre, nivel, poder calculado y estado de la simulación. Esta operación no modifica el documento ni consume monedas.
+
 ## 5. Catálogo de Endpoints de la API
 
 Los identificadores de usuario y Clustermon se esperan como cadenas con formato `ObjectId` de MongoDB.
@@ -111,13 +116,14 @@ Los identificadores de usuario y Clustermon se esperan como cadenas con formato 
 | `DELETE` | `/clustermones/{id}/usuario/{usuario_id}` | Libera una criatura del usuario y reembolsa 20 monedas. | `200`, `400`, `403`, `404` |
 | `POST` | `/clustermones/{id}/subir-nivel/{usuario_id}` | Incrementa el nivel y cobra el costo exponencial correspondiente. | `200`, `400`, `403`, `404` |
 | `POST` | `/clustermones/intercambiar/{usuario1_id}/{clustermon1_id}/{usuario2_id}/{clustermon2_id}` | Intercambia la propiedad de dos criaturas entre dos entrenadores. | `200`, `400`, `403`, `404` |
+| `POST` | `/clustermones/{id}/simular-batalla` | Calcula el poder estimado de un Clustermon en un hilo secundario. | `200`, `400`, `404` |
 | `GET` | `/app` | Sirve el dashboard web desde `static/index.html`. | `200` |
 
 Los errores de validación de identificadores, saldo insuficiente, cooldown, duplicidad o reglas de negocio se devuelven normalmente como `400`. La falta de recursos produce `404` y un intento de operar sobre una criatura que no pertenece al usuario produce `403`.
 
 ## 6. Cliente Web Frontend (/app)
 
-La ruta `GET /app` utiliza `FileResponse` para servir `static/index.html`. El dashboard es una SPA básica sin framework: actualiza el DOM y consume la API con `fetch` asíncrono, mostrando los resultados sin recargar la página.
+La ruta `GET /app` utiliza `FileResponse` para servir `static/index.html`. Además, FastAPI monta la carpeta `static/` en `/static` para exponer recursos estáticos. El dashboard es una SPA básica sin framework: actualiza el DOM y consume la API con `fetch` asíncrono, mostrando los resultados sin recargar la página.
 
 La interfaz incluye los siguientes módulos:
 
@@ -128,6 +134,10 @@ La interfaz incluye los siguientes módulos:
 - **Progresión:** permite subir una criatura de nivel y muestra el costo descontado.
 - **Liberación:** solicita confirmación, elimina la criatura y actualiza el saldo y el inventario.
 - **Centro de Intercambio:** recibe los dos usuarios y las dos criaturas, ejecuta el trade y refresca el inventario del usuario activo.
+- **Historial de actividad:** conserva en pantalla los últimos diez avisos de invocación, reclamo, intercambio, progresión, liberación y simulación.
+- **Simulación de batalla:** ejecuta la simulación en segundo plano, muestra el poder estimado y comunica que el cálculo se realizó en un hilo secundario.
+
+El comportamiento interactivo está implementado actualmente dentro de una etiqueta `<script>` en `static/index.html`; el archivo `static/app.js` no se carga mediante una etiqueta `<script>` y no forma parte del flujo actual del dashboard. Su contenido corresponde a un prototipo anterior que busca un elemento `server-status` inexistente y espera campos (`ok` y `db`) que `/ping` no devuelve. Puede conservarse como referencia histórica o eliminarse en una limpieza posterior; no es necesario para ejecutar la aplicación actual.
 
 ## 7. Instalación y Puesta en Marcha
 
