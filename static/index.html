@@ -93,7 +93,11 @@
       <button onclick="hacerTirada()">🎲 Tirada Gacha</button>
     </div>
 
-    <div id="mensajeAccion" class="resultado" style="display:none;"></div>
+    <!-- HISTORIAL DE ACTIVIDAD (LOG) -->
+    <label style="display:block; margin-top: 12px; font-weight: bold; font-size: 0.9em; color: #94a3b8;">Historial de Actividad (Últimos 10 avisos):</label>
+    <div id="logActividad" class="resultado" style="max-height: 160px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px;">
+      <span style="color: #64748b;">Sin actividad registrada.</span>
+    </div>
   </div>
 
   <!-- SECCIÓN INTERCAMBIO -->
@@ -108,7 +112,6 @@
     <input type="text" id="tradeC2" placeholder="ID del Clustermon a recibir">
 
     <button class="btn-trade" onclick="ejecutarIntercambio()">Realizar Intercambio</button>
-    <div id="mensajeTrade" class="resultado" style="display:none;"></div>
   </div>
 
   <!-- SECCIÓN INVENTARIO -->
@@ -119,6 +122,22 @@
 
   <script>
     const BASE_URL = "http://127.0.0.1:8000";
+    const historialLog = [];
+
+    // Función global de log
+    function agregarLog(mensajeHtml) {
+      const hora = new Date().toLocaleTimeString();
+      const linea = `<span style="font-size: 0.85em; color: #94a3b8;">[${hora}]</span> ${mensajeHtml}`;
+      
+      historialLog.unshift(linea);
+      
+      if (historialLog.length > 10) {
+        historialLog.pop();
+      }
+
+      const contenedor = document.getElementById("logActividad");
+      contenedor.innerHTML = historialLog.map(item => `<div>${item}</div>`).join("");
+    }
 
     async function actualizarSaldo() {
       const usuarioId = document.getElementById("usuarioId").value.trim();
@@ -130,8 +149,6 @@
           const user = await resp.json();
           document.getElementById("cantidadMonedas").innerText = user.monedas;
           document.getElementById("contenedorMonedas").style.display = "block";
-          
-          // Autorrellena el campo del trade con tu usuario actual
           document.getElementById("tradeU1").value = usuarioId;
         }
       } catch (err) {
@@ -146,24 +163,26 @@
 
     async function reclamarMonedas() {
       const usuarioId = document.getElementById("usuarioId").value.trim();
-      const panel = document.getElementById("mensajeAccion");
+      if (!usuarioId) {
+        alert("Ingresa un ID de usuario.");
+        return;
+      }
 
-      panel.style.display = "block";
-      panel.innerHTML = "Reclamando monedas...";
+      agregarLog("Reclamando recompensa...");
 
       try {
         const resp = await fetch(`${BASE_URL}/usuarios/${usuarioId}/reclamar`, { method: "POST" });
         const data = await resp.json();
 
         if (!resp.ok) {
-          panel.innerHTML = `<span style="color:#f87171;">${data.detail || 'Error al reclamar'}</span>`;
+          agregarLog(`<span style="color:#f87171;">${data.detail || 'Error al reclamar'}</span>`);
           return;
         }
 
-        panel.innerHTML = `<span style="color:#eab308;">${data.mensaje || '¡Monedas reclamadas con éxito!'}</span>`;
+        agregarLog(`<span style="color:#eab308;">${data.mensaje || '¡Monedas reclamadas con éxito!'}</span>`);
         await actualizarSaldo();
       } catch (err) {
-        panel.innerHTML = `<span style="color:#f87171;">Error de conexión con el servidor.</span>`;
+        agregarLog(`<span style="color:#f87171;">Error de conexión con el servidor.</span>`);
       }
     }
 
@@ -204,7 +223,7 @@
                 <button class="btn-subir" onclick="subirNivel('${c.id}')">Subir Nivel</button>
                 <button style="background: #eab308; color: #0f172a;" onclick="simularBatalla('${c.id}')">⚔️ Simular</button>
                 <button class="btn-liberar" onclick="liberar('${c.id}')">Liberar</button>
-                </div>
+              </div>
             </div>
           `;
         });
@@ -215,43 +234,41 @@
 
     async function hacerTirada() {
       const usuarioId = document.getElementById("usuarioId").value.trim();
-      const panel = document.getElementById("mensajeAccion");
+      if (!usuarioId) return;
 
-      panel.style.display = "block";
-      panel.innerHTML = "Invocando...";
+      agregarLog("Invocando criatura en el gacha...");
 
       try {
         const resp = await fetch(`${BASE_URL}/clustermones/tirada/${usuarioId}`, { method: "POST" });
         const data = await resp.json();
 
         if (!resp.ok) {
-          panel.innerHTML = `<span style="color:#f87171;">${data.detail}</span>`;
+          agregarLog(`<span style="color:#f87171;">${data.detail}</span>`);
           return;
         }
 
-        panel.innerHTML = `<span style="color:#4ade80;">${data.mensaje}</span>`;
+        agregarLog(`<span style="color:#4ade80;">${data.mensaje}</span>`);
         await actualizarSaldo();
         await cargarInventario();
       } catch (err) {
-        panel.innerHTML = `<span style="color:#f87171;">Error de conexión</span>`;
+        agregarLog(`<span style="color:#f87171;">Error de conexión.</span>`);
       }
     }
 
     async function subirNivel(clustermonId) {
       const usuarioId = document.getElementById("usuarioId").value.trim();
-      const panel = document.getElementById("mensajeAccion");
+      if (!usuarioId) return;
 
       try {
         const resp = await fetch(`${BASE_URL}/clustermones/${clustermonId}/subir-nivel/${usuarioId}`, { method: "POST" });
         const data = await resp.json();
 
-        panel.style.display = "block";
         if (!resp.ok) {
-          panel.innerHTML = `<span style="color:#f87171;">${data.detail}</span>`;
+          agregarLog(`<span style="color:#f87171;">${data.detail}</span>`);
           return;
         }
 
-        panel.innerHTML = `<span style="color:#4ade80;">${data.mensaje} (Gastaste ${data.monedas_gastadas} monedas)</span>`;
+        agregarLog(`<span style="color:#4ade80;">${data.mensaje} (Gastaste ${data.monedas_gastadas} monedas)</span>`);
         await actualizarSaldo();
         await cargarInventario();
       } catch (err) {
@@ -261,7 +278,7 @@
 
     async function liberar(clustermonId) {
       const usuarioId = document.getElementById("usuarioId").value.trim();
-      const panel = document.getElementById("mensajeAccion");
+      if (!usuarioId) return;
 
       if (!confirm("¿Seguro que quieres liberar este Clustermon por 20 monedas?")) return;
 
@@ -269,13 +286,12 @@
         const resp = await fetch(`${BASE_URL}/clustermones/${clustermonId}/usuario/${usuarioId}`, { method: "DELETE" });
         const data = await resp.json();
 
-        panel.style.display = "block";
         if (!resp.ok) {
-          panel.innerHTML = `<span style="color:#f87171;">${data.detail}</span>`;
+          agregarLog(`<span style="color:#f87171;">${data.detail}</span>`);
           return;
         }
 
-        panel.innerHTML = `<span style="color:#fbbf24;">${data.mensaje}</span>`;
+        agregarLog(`<span style="color:#fbbf24;">${data.mensaje}</span>`);
         await actualizarSaldo();
         await cargarInventario();
       } catch (err) {
@@ -288,15 +304,13 @@
       const c1 = document.getElementById("tradeC1").value.trim();
       const u2 = document.getElementById("tradeU2").value.trim();
       const c2 = document.getElementById("tradeC2").value.trim();
-      const panel = document.getElementById("mensajeTrade");
 
       if (!u1 || !c1 || !u2 || !c2) {
         alert("Debes llenar los 4 campos para realizar el intercambio.");
         return;
       }
 
-      panel.style.display = "block";
-      panel.innerHTML = "Procesando intercambio...";
+      agregarLog("Procesando intercambio entre entrenadores...");
 
       try {
         const url = `${BASE_URL}/clustermones/intercambiar/${u1}/${c1}/${u2}/${c2}`;
@@ -304,40 +318,38 @@
         const data = await resp.json();
 
         if (!resp.ok) {
-          panel.innerHTML = `<span style="color:#f87171;">${data.detail || 'Error en el intercambio'}</span>`;
+          agregarLog(`<span style="color:#f87171;">${data.detail || 'Error en el intercambio'}</span>`);
           return;
         }
 
-        panel.innerHTML = `<span style="color:#a78bfa;">${data.mensaje}</span>`;
+        agregarLog(`<span style="color:#a78bfa;">${data.mensaje}</span>`);
 
         const usuarioActivo = document.getElementById("usuarioId").value.trim();
         if (usuarioActivo === u1 || usuarioActivo === u2) {
           await cargarInventario();
         }
       } catch (err) {
-        panel.innerHTML = `<span style="color:#f87171;">Error de conexión con el servidor.</span>`;
+        agregarLog(`<span style="color:#f87171;">Error de conexión con el servidor.</span>`);
       }
     }
 
     async function simularBatalla(clustermonId) {
-        const panel = document.getElementById("mensajeAccion");
-        panel.style.display = "block";
-        panel.innerHTML = "⏳ Simulando batalla en segundo plano (demora 4s)...";
+      agregarLog("⏳ Simulando batalla en segundo plano (hilo secundario - demora 4s)...");
 
-        try {
-            const resp = await fetch(`${BASE_URL}/clustermones/${clustermonId}/simular-batalla`, { method: "POST" });
-            const data = await resp.json();
+      try {
+        const resp = await fetch(`${BASE_URL}/clustermones/${clustermonId}/simular-batalla`, { method: "POST" });
+        const data = await resp.json();
 
-            if (!resp.ok) {
-            panel.innerHTML = `<span style="color:#f87171;">${data.detail || 'Error en la simulación'}</span>`;
-            return;
-            }
-
-            panel.innerHTML = `<span style="color:#eab308;">⚔️ ¡${data.clustermon}! Poder estimado: ${data.poder_calculado} (${data.estado})</span>`;
-        } catch (err) {
-            panel.innerHTML = `<span style="color:#f87171;">Error de conexión con el servidor.</span>`;
+        if (!resp.ok) {
+          agregarLog(`<span style="color:#f87171;">${data.detail || 'Error en la simulación'}</span>`);
+          return;
         }
+
+        agregarLog(`<span style="color:#eab308;">⚔️ ¡${data.clustermon}! Poder estimado: ${data.poder_calculado} (${data.estado})</span>`);
+      } catch (err) {
+        agregarLog(`<span style="color:#f87171;">Error de conexión con el servidor.</span>`);
+      }
     }
-</script>
+  </script>
 </body>
 </html>
