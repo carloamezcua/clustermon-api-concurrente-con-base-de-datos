@@ -5,6 +5,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 from bson import ObjectId
+from datetime import datetime, timezone
 
 # 1. Cargar las variables desde el archivo .env
 load_dotenv()
@@ -71,10 +72,10 @@ async def registrar_usuario(datos: UsuarioRegistro):
     
     # 2. Estructura del nuevo entrenador
     nuevo_usuario = {
-        "username": datos.username,
-        "password": datos.password,
-        "coins": 100,            # Monedas de bienvenida
-        "last_claim": None      # Control de cooldown
+        "usuario": datos.username,
+        "contraseña": datos.password,
+        "monedas": 100,            # Monedas de bienvenida
+        "ultimo_reclamo": None      # Control de cooldown
     }
     
     # 3. Inserción asíncrona en Atlas
@@ -83,8 +84,8 @@ async def registrar_usuario(datos: UsuarioRegistro):
     return {
         "mensaje": "Usuario registrado con éxito",
         "id": str(resultado.inserted_id),
-        "username": datos.username,
-        "coins": 100
+        "usuario": datos.username,
+        "monedas": 100
     }
 
 @app.get("/usuarios/{id}")
@@ -111,7 +112,54 @@ async def obtener_usuario(id: str):
     # 4. Retornar los datos del perfil (sin exponer la contraseña)
     return {
         "id": str(usuario["_id"]),
-        "username": usuario.get("username"),
-        "coins": usuario.get("coins", 0),
-        "last_claim": usuario.get("last_claim")
+        "usuario": usuario.get("usuario"),
+        "monedas": usuario.get("monedas", 0),
+        "ultimo_reclamo": usuario.get("ultimo_reclamo")
+    }
+
+COOLDOWN_RECLAMO_SEGUNDOS = 60
+RECOMPENSA_MONEDAS = 50
+
+@app.post("/usuarios/{id}/reclamar")
+async def reclamar_monedas(id: str):
+    if not ObjectId.is_valid(id):
+        raise HTTPException(status_code=400, detail="Formato de ID inválido.")
+
+    coleccion_usuarios = app.state.usuarios
+    usuario = await coleccion_usuarios.find_one({"_id": ObjectId(id)})
+
+    if not usuario:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado.")
+
+    ahora = datetime.now(timezone.utc)
+    ultimo_reclamo = usuario.get("ultimo_reclamo")
+
+    if ultimo_reclamo:
+        if ultimo_reclamo.tzinfo is None:
+            ultimo_reclamo = ultimo_reclamo.replace(tzinfo=timezone.utc)
+            
+        segundos_pasados = (ahora - ultimo_reclamo).total_seconds()
+        
+        if segundos_pasados < COOLDOWN_RECLAMO_SEGUNDOS:
+            segundos_restantes = int(COOLDOWN_RECLAMO_SEGUNDOS - segundos_pasados)
+            horas_restantes = segundos_restantes // 3600
+            minutos_restantes = (segundos_restantes % 3600) // 60
+            raise HTTPException(
+                status_code=400,
+                detail=f"Recompensa diaria no disponible. Espera {horas_restantes}h {minutos_restantes}m."
+            )
+
+    await coleccion_usuarios.update_one(
+        {"_id": ObjectId(id)},
+        {
+            "$inc": {"monedas": RECOMPENSA_MONEDAS},
+            "$set": {"ultimo_reclamo": ahora}
+        }
+    )
+
+    nuevo_balance = usuario.get("monedas", 0) + RECOMPENSA_MONEDAS
+
+    return {
+        "mensaje": f"¡Reclamaste tu recompensa diaria de {RECOMPENSA_MONEDAS} monedas!",
+        "monedas_actuales": nuevo_balance
     }
